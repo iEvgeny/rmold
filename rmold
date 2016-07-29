@@ -1,0 +1,230 @@
+#!/bin/bash
+#
+# rmold - script to automate removal of old files.
+# Copyright (C) 2016 Evgeny S Maksimov <admin@vragam.net>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Script version.
+VERSION="0.1"
+
+# The time which is determining the age of the files when they will be deleted.
+EXPIRE_TIME=0
+
+# Threshold of used space in percentage.
+TRESHOLD=0
+
+# Force remove empty directories.
+FORCE_REMOVE=1
+
+# Exclude path or pattern.
+EXCLUDE=""
+
+# Default logfile.
+LOGFILE="/dev/null"
+
+# Test mode.
+TEST_MODE=1
+
+print_version()
+{
+    echo "$(basename $0) version $VERSION"
+}
+
+print_message()
+{
+	echo $@ >&4
+}
+
+print_help()
+{
+	print_version
+	echo "Usage: $(basename $0) [options] [file/directory]"
+	echo
+	echo "Options:"
+	echo "  -e [TIME]     : Remove the files that has been around longer than the given [TIME]."
+	echo "                : Use \"rdiff-backup\" time format."
+	echo "  -u [TRESHOLD] : Delete oldest files when reaching [TRESHOLD] of used space in percentage."
+	echo "  -f            : Force remove empty directories."
+	echo "  -x [PATH]     : Exclude [PATH] or pattern."
+	echo "  -l [FILE]     : Log events in the [FILE]. Use \"syslog\" for logging in the system log."
+	echo "  -t            : Test mode."
+	echo "  -q            : Enable quiet mode. Only error messages will be displayed."
+	echo "  -v            : Show version and quit."
+	echo "  -h            : Print this help and quit."
+	echo
+	echo "Example: $(basename $0) -qfe 1M2W -l syslog /media/backups"
+	echo
+	exit 1
+}
+
+# Prepare descriptor for output control.
+exec 3>&1
+
+# Parse command line options.
+while getopts e:u:fx:tl:qvh OPT; do
+	case "$OPT" in
+		e)
+			EXPIRE_TIME_STR="$OPTARG"
+
+			# NOTE: Non-capturing groups "(?:...)" don't support in bash regex (return syntax error),
+			# so we have to ignore one of the members of the array "BASH_REMATCH".
+			while  [[ "$EXPIRE_TIME_STR" =~ ^([[:digit:]]+)([mhDWMY])(([[:digit:]]+[mhDWMY])*)$ ]]; do
+				case "${BASH_REMATCH[2]}" in
+					m)
+						(( EXPIRE_TIME += ${BASH_REMATCH[1]} ))
+						;;
+					h)
+						(( EXPIRE_TIME += ${BASH_REMATCH[1]} * 60 ))
+						;;
+					D)
+						(( EXPIRE_TIME += ${BASH_REMATCH[1]} * 60 * 24 ))
+						;;
+					W)
+						(( EXPIRE_TIME += ${BASH_REMATCH[1]} * 60 * 24 * 7 ))
+						;;
+					M)
+						(( EXPIRE_TIME += ${BASH_REMATCH[1]} * 60 * 24 * 30 ))
+						;;
+					Y)
+						(( EXPIRE_TIME += ${BASH_REMATCH[1]} * 60 * 24 * 365 ))
+						;;
+				esac
+
+				EXPIRE_TIME_STR="${BASH_REMATCH[3]}"
+			done
+
+			if [[ $EXPIRE_TIME -le 0 ]]; then
+				print_help
+				exit 1
+			fi
+			;;
+		u)
+			if [[ "$OPTARG" =~ ^[0-9]+$ ]] && [[ "$OPTARG" -ge 0 ]] && [[ "$OPTARG" -le 100 ]]; then
+				TRESHOLD="$OPTARG"
+			else
+				print_help
+				exit 1
+			fi
+			;;
+		f)
+			FORCE_REMOVE=0
+			;;
+		x)
+			if [[ ! -z "$OPTARG" ]]; then
+				EXCLUDE+="! -path $OPTARG "
+			fi
+			;;
+		l)
+			[[ ! -d $(dirname "$OPTARG") ]] && echo "The path to the log file does not exist!" && exit 1
+			LOGFILE="$OPTARG"
+			;;
+		t)
+			TEST_MODE=0
+			;;
+		q)
+			# Disable output.
+			exec 3>/dev/null
+			;;
+		v)
+			print_version
+			exit 0
+			;;
+		h)
+			print_help
+			exit 0
+			;;
+		\?)
+			# getopts return error.
+			print_help
+			exit 1
+			;;
+	esac
+done
+
+# Remove above processed parameters.
+shift $(expr $OPTIND - 1)
+
+# Prepare descriptor for logging control.
+if [[ "$LOGFILE" == "syslog" ]]; then
+	# exec 4> >(tee -a >(logger -et $(basename $0)) >&3)  # For newest versions "logger"
+	exec 4> >(tee -a >(grep --line-buffered -v '^$' | logger -t $(basename $0)) >&3)
+else
+	exec 4> >(tee -a "$LOGFILE" >&3)
+fi
+
+# Checking parameters.
+DESTINATION="$1"
+if [[ ! -f "$DESTINATION" ]] && [[ ! -d "$DESTINATION" ]]; then
+	print_help
+	exit 1
+fi
+
+print_message "------------ START CLEAN -----------"
+
+# Remove files "older" than EXPIRE_TIME.
+if [[ $EXPIRE_TIME -gt 0 ]]; then
+	if [[ $TEST_MODE -eq 0 ]]; then
+		find "$DESTINATION" $EXCLUDE -type f -cmin +$EXPIRE_TIME -print >&4 2>&1
+	else
+		find "$DESTINATION" $EXCLUDE -type f -cmin +$EXPIRE_TIME -delete -print >&4 2>&1
+	fi
+fi
+
+check_usage() {
+	USAGE=$(df -m "$1" | awk '{print $5}' | tail -1 | sed "s/%//g")
+	if [[ $USAGE -gt $TRESHOLD ]]; then
+		return 0
+	fi
+	return 1
+}
+
+# Removing the old files until achieving the threshold of the space on disk.
+PREVIOUS_FILE=""
+if [[ $TRESHOLD -gt 0 ]]; then
+	if [[ $TEST_MODE -gt 0 ]]; then
+		# TODO: Здесь возможно следует ввести дополнительную защиту от зацикливания, а так же ограничения на общее кол-во
+		#       удаляемых файлов за раз и таймауты между удалением групп файлов для снижения нагрузки на ФС.
+		while check_usage "$DESTINATION"; do
+			OLDEST_FILE=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n | head -1 | cut -d ' ' -f 2)
+			if [[ "$OLDEST_FILE" == "$PREVIOUS_FILE" ]]; then
+				print_message "ERROR: Loop detection!"
+				exit 1
+			fi
+
+			rm -f "$OLDEST_FILE"
+			print_message "$OLDEST_FILE"
+
+			PREVIOUS_FILE="$OLDEST_FILE"
+		done
+	else
+		print_message "ERROR: Unsupported joint \"-t\" option."
+		exit 1
+	fi
+fi
+
+# Remove empty directories.
+if [[ $FORCE_REMOVE -eq 0 ]]; then
+	if [[ $TEST_MODE -eq 0 ]]; then
+		find "$DESTINATION" $EXCLUDE -type d -empty -print >&4 2>&1
+	else
+		find "$DESTINATION" $EXCLUDE -type d -empty -delete -print >&4 2>&1
+	fi
+fi
+
+print_message "------------- END CLEAN ------------"
+
+# Close output descriptors.
+exec 4>&-
+exec 3>&-
