@@ -228,3 +228,5 @@ print_message "------------- END CLEAN ------------"
 # Close output descriptors.
 exec 4>&-
 exec 3>&-
+
+exit 0
