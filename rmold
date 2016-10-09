@@ -37,18 +37,15 @@ LOGFILE="/dev/null"
 # Test mode.
 TEST_MODE=1
 
-print_version()
-{
+print_version() {
     echo "$(basename $0) version $VERSION"
 }
 
-print_message()
-{
+print_message() {
 	echo $@ >&4
 }
 
-print_help()
-{
+print_help() {
 	print_version
 	echo "Usage: $(basename $0) [options] [file/directory]"
 	echo
