@@ -191,18 +191,14 @@ check_usage() {
 PREVIOUS_FILE=""
 if [[ $TRESHOLD -gt 0 ]]; then
 	if [[ $TEST_MODE -gt 0 ]]; then
-		# TODO: Здесь возможно следует ввести дополнительную защиту от зацикливания, а так же ограничения на общее кол-во
-		#       удаляемых файлов за раз и таймауты между удалением групп файлов для снижения нагрузки на ФС.
+		FILE_LIST=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n)
 		while check_usage "$DESTINATION"; do
-			OLDEST_FILE=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n | head -1 | cut -d ' ' -f 2)
-			if [[ "$OLDEST_FILE" == "$PREVIOUS_FILE" ]]; then
-				print_message "ERROR: Loop detection!"
-				exit 1
-			fi
+			OLDEST_FILE=$(echo "$FILE_LIST" | head -n 1 - | cut -d ' ' -f 2)
 
-			rm -f "$OLDEST_FILE"
 			print_message "$OLDEST_FILE"
+			rm -f "$OLDEST_FILE"
 
+			FILE_LIST=$(echo "$FILE_LIST" | tail -n +2 -)
 			PREVIOUS_FILE="$OLDEST_FILE"
 		done
 	else
