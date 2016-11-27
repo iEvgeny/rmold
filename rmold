@@ -20,7 +20,7 @@ NAME=$(basename $0)
 PIDFILE="/var/run/$NAME.pid"
 
 # Script version.
-VERSION="0.2"
+VERSION="0.2.1"
 
 # The time which is determining the age of the files when they will be deleted.
 EXPIRE_TIME=0
