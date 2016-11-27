@@ -16,6 +16,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+NAME=$(basename $0)
+PIDFILE="/var/run/$NAME.pid"
+
 # Script version.
 VERSION="0.2"
 
@@ -38,7 +41,7 @@ LOGFILE="/dev/null"
 TEST_MODE=1
 
 print_version() {
-    echo "$(basename $0) version $VERSION"
+    echo "$NAME version $VERSION"
 }
 
 print_message() {
@@ -47,7 +50,7 @@ print_message() {
 
 print_help() {
 	print_version
-	echo "Usage: $(basename $0) [options] [file/directory]"
+	echo "Usage: $NAME [options] [file/directory]"
 	echo
 	echo "Options:"
 	echo "  -e [TIME]     : Remove the files that has been around longer than the given [TIME]."
@@ -61,7 +64,7 @@ print_help() {
 	echo "  -v            : Show version and quit."
 	echo "  -h            : Print this help and quit."
 	echo
-	echo "Example: $(basename $0) -qfe 1M2W -l syslog /media/backups"
+	echo "Example: $NAME -qfe 1M2W -l syslog /media/backups"
 	echo
 	exit 1
 }
@@ -155,8 +158,8 @@ shift $(expr $OPTIND - 1)
 
 # Prepare descriptor for logging control.
 if [[ "$LOGFILE" == "syslog" ]]; then
-	# exec 4> >(tee -a >(logger -et $(basename $0)) >&3)  # For newest versions "logger"
-	exec 4> >(tee -a >(grep --line-buffered -v '^$' | logger -t $(basename $0)) >&3)
+	# exec 4> >(tee -a >(logger -et $NAME) >&3)  # For newest versions "logger"
+	exec 4> >(tee -a >(grep --line-buffered -v '^$' | logger -t $NAME) >&3)
 else
 	exec 4> >(tee -a "$LOGFILE" >&3)
 fi
@@ -170,50 +173,58 @@ fi
 
 print_message "------------ START CLEAN -----------"
 
-# Remove files "older" than EXPIRE_TIME.
-if [[ $EXPIRE_TIME -gt 0 ]]; then
-	if [[ $TEST_MODE -eq 0 ]]; then
-		find "$DESTINATION" $EXCLUDE -type f -cmin +$EXPIRE_TIME -print >&4 2>&1
-	else
-		find "$DESTINATION" $EXCLUDE -type f -cmin +$EXPIRE_TIME -delete -print >&4 2>&1
+if [[ ! -f $PIDFILE ]]; then
+	echo "$$" > $PIDFILE
+
+	# Remove files "older" than EXPIRE_TIME.
+	if [[ $EXPIRE_TIME -gt 0 ]]; then
+		if [[ $TEST_MODE -eq 0 ]]; then
+			find "$DESTINATION" $EXCLUDE -type f -cmin +$EXPIRE_TIME -print >&4 2>&1
+		else
+			find "$DESTINATION" $EXCLUDE -type f -cmin +$EXPIRE_TIME -delete -print >&4 2>&1
+		fi
 	fi
-fi
 
-check_usage() {
-	USAGE=$(df -m "$1" | awk '{print $5}' | tail -1 | sed "s/%//g")
-	if [[ $USAGE -gt $TRESHOLD ]]; then
-		return 0
+	check_usage() {
+		USAGE=$(df -m "$1" | awk '{print $5}' | tail -1 | sed "s/%//g")
+		if [[ $USAGE -gt $TRESHOLD ]]; then
+			return 0
+		fi
+		return 1
+	}
+
+	# Removing the old files until achieving the threshold of the space on disk.
+	PREVIOUS_FILE=""
+	if [[ $TRESHOLD -gt 0 ]]; then
+		if [[ $TEST_MODE -gt 0 ]]; then
+			FILE_LIST=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n)
+			while check_usage "$DESTINATION"; do
+				OLDEST_FILE=$(echo "$FILE_LIST" | head -n 1 - | cut -d ' ' -f 2)
+
+				print_message "$OLDEST_FILE"
+				rm -f "$OLDEST_FILE"
+
+				FILE_LIST=$(echo "$FILE_LIST" | tail -n +2 -)
+				PREVIOUS_FILE="$OLDEST_FILE"
+			done
+		else
+			print_message "ERROR: Unsupported joint \"-t\" option."
+			exit 1
+		fi
 	fi
-	return 1
-}
 
-# Removing the old files until achieving the threshold of the space on disk.
-PREVIOUS_FILE=""
-if [[ $TRESHOLD -gt 0 ]]; then
-	if [[ $TEST_MODE -gt 0 ]]; then
-		FILE_LIST=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n)
-		while check_usage "$DESTINATION"; do
-			OLDEST_FILE=$(echo "$FILE_LIST" | head -n 1 - | cut -d ' ' -f 2)
-
-			print_message "$OLDEST_FILE"
-			rm -f "$OLDEST_FILE"
-
-			FILE_LIST=$(echo "$FILE_LIST" | tail -n +2 -)
-			PREVIOUS_FILE="$OLDEST_FILE"
-		done
-	else
-		print_message "ERROR: Unsupported joint \"-t\" option."
-		exit 1
+	# Remove empty directories.
+	if [[ $FORCE_REMOVE -eq 0 ]]; then
+		if [[ $TEST_MODE -eq 0 ]]; then
+			find "$DESTINATION" $EXCLUDE -type d -empty -print >&4 2>&1
+		else
+			find "$DESTINATION" $EXCLUDE -type d -empty -delete -print >&4 2>&1
+		fi
 	fi
-fi
 
-# Remove empty directories.
-if [[ $FORCE_REMOVE -eq 0 ]]; then
-	if [[ $TEST_MODE -eq 0 ]]; then
-		find "$DESTINATION" $EXCLUDE -type d -empty -print >&4 2>&1
-	else
-		find "$DESTINATION" $EXCLUDE -type d -empty -delete -print >&4 2>&1
-	fi
+	rm -f $PIDFILE
+else
+	print_message "ERROR: Only one instance of \"$NAME\" can run at one time."
 fi
 
 print_message "------------- END CLEAN ------------"
