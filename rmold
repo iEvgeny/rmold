@@ -20,7 +20,7 @@ NAME=$(basename $0)
 PIDFILE="/var/run/$NAME.pid"
 
 # Script version.
-VERSION="0.2.1"
+VERSION="0.2.2"
 
 # The time which is determining the age of the files when they will be deleted.
 EXPIRE_TIME=0
@@ -173,7 +173,14 @@ fi
 
 print_message "------------ START CLEAN -----------"
 
-if [[ ! -f $PIDFILE ]]; then
+PID=0
+if [[ -f $PIDFILE ]]; then
+	PID=$(cat $PIDFILE)
+fi
+
+if ps -p $PID > /dev/null 2>&1; then
+	print_message "ERROR: Only one instance of \"$NAME\" can run at one time."
+else
 	echo "$$" > $PIDFILE
 
 	# Remove files "older" than EXPIRE_TIME.
@@ -186,7 +193,7 @@ if [[ ! -f $PIDFILE ]]; then
 	fi
 
 	check_usage() {
-		USAGE=$(df -m "$1" | awk '{print $5}' | tail -1 | sed "s/%//g")
+		USAGE=$(df -m "$1" | awk '{print $5}' | tail -n 1 - | sed "s/%//g")
 		if [[ $USAGE -gt $TRESHOLD ]]; then
 			return 0
 		fi
@@ -223,8 +230,6 @@ if [[ ! -f $PIDFILE ]]; then
 	fi
 
 	rm -f $PIDFILE
-else
-	print_message "ERROR: Only one instance of \"$NAME\" can run at one time."
 fi
 
 print_message "------------- END CLEAN ------------"
