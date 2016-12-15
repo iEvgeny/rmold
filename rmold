@@ -20,7 +20,7 @@ NAME=$(basename $0)
 PIDFILE="/var/run/$NAME.pid"
 
 # Script version.
-VERSION="0.2.2"
+VERSION="0.2.3"
 
 # The time which is determining the age of the files when they will be deleted.
 EXPIRE_TIME=0
@@ -201,11 +201,16 @@ else
 	}
 
 	# Removing the old files until achieving the threshold of the space on disk.
+	FILE_LIST=""
 	PREVIOUS_FILE=""
 	if [[ $TRESHOLD -gt 0 ]]; then
 		if [[ $TEST_MODE -gt 0 ]]; then
-			FILE_LIST=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n)
+			# TODO: Implement protection from loops!
 			while check_usage "$DESTINATION"; do
+				if [[ -z "$FILE_LIST" ]]; then
+					FILE_LIST=$(find "$DESTINATION" $EXCLUDE -type f | xargs stat -c "%Z %n" | sort -n)
+				fi
+
 				OLDEST_FILE=$(echo "$FILE_LIST" | head -n 1 - | cut -d ' ' -f 2)
 
 				print_message "$OLDEST_FILE"
