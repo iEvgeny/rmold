@@ -154,7 +154,7 @@ while getopts e:u:fx:tl:qvh OPT; do
 done
 
 # Remove above processed parameters.
-shift $(expr $OPTIND - 1)
+shift $(( OPTIND - 1 ))
 
 # Prepare descriptor for logging control.
 if [[ "$LOGFILE" == "syslog" ]]; then
