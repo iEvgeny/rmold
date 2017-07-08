@@ -158,7 +158,7 @@ shift $(( OPTIND - 1 ))
 
 # Prepare descriptor for logging control.
 if [[ "$LOGFILE" == "syslog" ]]; then
-	# exec 4> >(tee -a >(logger -et $NAME) >&3)  # For newest versions "logger"
+	#exec 4> >(tee -a >(logger -et $NAME) >&3)  # For newest versions "logger"
 	exec 4> >(tee -a >(grep --line-buffered -v '^$' | logger -t $NAME) >&3)
 else
 	exec 4> >(tee -a "$LOGFILE" >&3)
