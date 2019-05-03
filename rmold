@@ -174,14 +174,14 @@ fi
 print_message "------------ START CLEAN -----------"
 
 PID=0
-if [[ -f $PIDFILE ]]; then
-	PID=$(cat $PIDFILE)
+if [[ -f "$PIDFILE" ]]; then
+	PID=$(cat "$PIDFILE")
 fi
 
 if ps -p $PID > /dev/null 2>&1; then
 	print_message "ERROR: Only one instance of \"$NAME\" can run at one time."
 else
-	echo "$$" > $PIDFILE
+	echo "$$" > "$PIDFILE"
 
 	# Remove files "older" than EXPIRE_TIME.
 	if [[ $EXPIRE_TIME -gt 0 ]]; then
@@ -234,7 +234,7 @@ else
 		fi
 	fi
 
-	rm -f $PIDFILE
+	rm -f "$PIDFILE"
 fi
 
 print_message "------------- END CLEAN ------------"
