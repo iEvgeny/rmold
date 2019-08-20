@@ -156,11 +156,11 @@ while getopts e:u:fx:tl:qvh OPT; do
 done
 
 # Remove above processed parameters.
-shift $(expr $OPTIND - 1)
+shift $(( OPTIND - 1 ))
 
 # Prepare descriptor for logging control.
 if [[ "$LOGFILE" == "syslog" ]]; then
-	# exec 4> >(tee -a >(logger -et $NAME) >&3)  # For newest versions "logger"
+	#exec 4> >(tee -a >(logger -et $NAME) >&3)  # For newest versions "logger"
 	exec 4> >(tee -a >(grep --line-buffered -v '^$' | logger -t $NAME) >&3)
 else
 	exec 4> >(tee -a "$LOGFILE" >&3)
@@ -176,14 +176,14 @@ fi
 print_message "------------ START CLEAN -----------"
 
 PID=0
-if [[ -f $PIDFILE ]]; then
-	PID=$(cat $PIDFILE)
+if [[ -f "$PIDFILE" ]]; then
+	PID=$(cat "$PIDFILE")
 fi
 
 if ps -p $PID > /dev/null 2>&1; then
 	print_message "ERROR: Only one instance of \"$NAME\" can run at one time."
 else
-	echo "$$" > $PIDFILE
+	echo "$$" > "$PIDFILE"
 
 	# Remove files "older" than EXPIRE_TIME.
 	if [[ $EXPIRE_TIME -gt 0 ]]; then
@@ -236,7 +236,7 @@ else
 		fi
 	fi
 
-	rm -f $PIDFILE
+	rm -f "$PIDFILE"
 fi
 
 print_message "------------- END CLEAN ------------"
