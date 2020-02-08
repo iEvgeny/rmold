@@ -79,7 +79,7 @@ print_help() {
 exec 3>&1
 
 # Parse command line options.
-while getopts e:u:fx:tl:qvh OPT; do
+while getopts e:u:fx:tl:sqvh OPT; do
 	case "$OPT" in
 		e)
 			EXPIRE_TIME_STR="$OPTARG"
