@@ -21,8 +21,11 @@ IFS=""
 NAME=$(basename $0)
 PIDFILE="/var/run/$NAME.pid"
 
+# Use pid-file suffix
+USE_SUFFIX=0
+
 # Script version.
-VERSION="0.2.4"
+VERSION="0.2.5"
 
 # The time which is determining the age of the files when they will be deleted.
 EXPIRE_TIME=0
@@ -62,6 +65,7 @@ print_help() {
 	echo "  -x [PATH]     : Exclude [PATH] or pattern."
 	echo "  -l [FILE]     : Log events in the [FILE]. Use \"syslog\" for logging in the system log."
 	echo "  -t            : Test mode."
+	echo "  -s            : Use pid-file suffix based on destination path."
 	echo "  -q            : Enable quiet mode. Only error messages will be displayed."
 	echo "  -v            : Show version and quit."
 	echo "  -h            : Print this help and quit."
@@ -135,6 +139,9 @@ while getopts e:u:fx:tl:qvh OPT; do
 		t)
 			TEST_MODE=0
 			;;
+		s)
+			USE_SUFFIX=1
+			;;
 		q)
 			# Disable output.
 			exec 3>/dev/null
@@ -171,6 +178,11 @@ DESTINATION="$1"
 if [[ ! -f "$DESTINATION" ]] && [[ ! -d "$DESTINATION" ]]; then
 	print_help
 	exit 1
+fi
+
+if [[ $USE_SUFFIX -eq 1 ]]; then
+	$SUFFIX=$(echo $DESTINATION | cksum | cut -d ' ' -f 1)
+	PIDFILE="/var/run/$NAME-$SUFFIX.pid"
 fi
 
 print_message "------------ START CLEAN -----------"
