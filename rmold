@@ -181,7 +181,7 @@ if [[ ! -f "$DESTINATION" ]] && [[ ! -d "$DESTINATION" ]]; then
 fi
 
 if [[ $USE_SUFFIX -eq 1 ]]; then
-	$SUFFIX=$(echo $DESTINATION | cksum | cut -d ' ' -f 1)
+	SUFFIX=$(echo "$DESTINATION" | cksum | cut -d ' ' -f 1)
 	PIDFILE="/var/run/$NAME-$SUFFIX.pid"
 fi
 
